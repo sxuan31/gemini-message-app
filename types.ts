@@ -18,19 +18,30 @@ export interface User {
   role: 'admin' | 'user';
   avatar: string;
   email: string;
+  department?: string;
 }
 
 export interface Message {
   id: string;
   senderId: string;
-  receiverId: string; // 'ALL' for broadcast
+  receiverId: string; // 'ALL' for broadcast, or specific ID, or Group Name
   subject: string;
   content: string;
   type: MessageType;
   priority: Priority;
   isRead: boolean;
+  isStarred?: boolean; // New: For favorite messages
   createdAt: string; // ISO Date string
   tags?: string[];
+  scheduledFor?: string; // For scheduled messages
+}
+
+export interface Template {
+  id: string;
+  name: string;
+  subject: string;
+  content: string;
+  priority: Priority;
 }
 
 export interface NavItem {
