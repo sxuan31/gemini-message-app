@@ -372,7 +372,8 @@ const AdminDashboard: React.FC = () => {
                       {isDrafting ? (
                           <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
                       ) : (
-                          <>Generate Draft <Sparkles size={16}/></>}
+                          <>Generate Draft <Sparkles size={16}/></>
+                      )}
                    </button>
                 </div>
              </div>
