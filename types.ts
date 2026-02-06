@@ -49,3 +49,23 @@ export interface NavItem {
   path: string;
   icon: React.ReactNode;
 }
+
+// IM Related Types
+export interface ChatMessage {
+  id: string;
+  sessionId: string;
+  senderId: string;
+  content: string;
+  timestamp: string;
+  isRead: boolean;
+}
+
+export interface ChatSession {
+  id: string;
+  userId: string; // The user starting the chat
+  adminId?: string; // Assigned admin (optional)
+  lastMessage: string;
+  lastMessageTime: string;
+  unreadCount: number; // For admin perspective
+  status: 'active' | 'closed';
+}

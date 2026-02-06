@@ -1,15 +1,18 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { Message, Priority, MessageType } from '../types';
 import { 
   Search, Star, Trash2, Mail, MailOpen, Sparkles, X, ChevronLeft, 
-  CheckCheck, Inbox, Archive, Reply 
+  CheckCheck, Inbox, Reply 
 } from 'lucide-react';
 import { summarizeMessage } from '../services/geminiService';
+import { useParams, useNavigate } from 'react-router-dom';
 
 const UserInbox: React.FC = () => {
   const { messages, currentUser, markAsRead, markAsUnread, markAllAsRead, toggleStar, deleteMessage } = useData();
-  const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
+  const { messageId } = useParams<{messageId: string}>();
+  const navigate = useNavigate();
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'starred' | 'system'>('all');
   const [summary, setSummary] = useState<string | null>(null);
@@ -35,12 +38,25 @@ const UserInbox: React.FC = () => {
     return result;
   }, [myMessages, searchTerm, activeTab]);
 
-  const handleSelectMessage = (msg: Message) => {
-    setSelectedMessage(msg);
-    setSummary(null); // Reset summary
-    if (!msg.isRead) {
-      markAsRead(msg.id);
+  const selectedMessage = useMemo(() => {
+      return myMessages.find(m => m.id === messageId) || null;
+  }, [myMessages, messageId]);
+
+  // Mark read when opening a message via URL
+  useEffect(() => {
+    if (selectedMessage && !selectedMessage.isRead) {
+        markAsRead(selectedMessage.id);
     }
+    // Reset summary when message changes
+    setSummary(null);
+  }, [selectedMessage?.id]);
+
+  const handleSelectMessage = (msg: Message) => {
+    navigate(`/inbox/${msg.id}`);
+  };
+
+  const handleCloseMessage = () => {
+    navigate('/inbox');
   };
 
   const handleSummarize = async () => {
@@ -54,6 +70,15 @@ const UserInbox: React.FC = () => {
   const handleToggleStar = (e: React.MouseEvent, msgId: string) => {
       e.stopPropagation();
       toggleStar(msgId);
+  };
+
+  const handleDelete = (id: string) => {
+      if(confirm('Are you sure you want to delete this message?')) {
+          deleteMessage(id);
+          if (selectedMessage?.id === id) {
+             navigate('/inbox');
+          }
+      }
   };
 
   return (
@@ -176,7 +201,7 @@ const UserInbox: React.FC = () => {
             {/* Detail Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-white/80 backdrop-blur-sm sticky top-0 z-10">
               <div className="flex items-center gap-3">
-                <button className="md:hidden text-gray-500 hover:bg-gray-100 p-1 rounded-lg" onClick={() => setSelectedMessage(null)}>
+                <button className="md:hidden text-gray-500 hover:bg-gray-100 p-1 rounded-lg" onClick={handleCloseMessage}>
                   <ChevronLeft />
                 </button>
                 {/* Avatar */}
@@ -206,7 +231,7 @@ const UserInbox: React.FC = () => {
                  <button 
                    onClick={() => {
                       markAsUnread(selectedMessage.id);
-                      setSelectedMessage(null);
+                      navigate('/inbox');
                    }}
                    className="p-2 text-gray-400 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg transition-colors"
                    title="Mark as Unread"
@@ -214,12 +239,7 @@ const UserInbox: React.FC = () => {
                    <Mail size={18} />
                  </button>
                  <button 
-                   onClick={() => {
-                       if(confirm('Are you sure you want to delete this message?')) {
-                           deleteMessage(selectedMessage.id);
-                           setSelectedMessage(null);
-                       }
-                   }}
+                   onClick={() => handleDelete(selectedMessage.id)}
                    className="p-2 text-gray-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors"
                    title="Delete"
                  >

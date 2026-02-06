@@ -1,19 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useData } from '../context/DataContext';
-import { MessageType, Priority, Template } from '../types';
+import { MessageType, Priority, Template, ChatSession } from '../types';
 import { draftAnnouncement } from '../services/geminiService';
 import { 
   Users, Send, Bell, CheckCircle2, AlertCircle, 
   History, FileText, Trash2, Copy, Clock, CalendarDays,
-  Sparkles, Eye, Undo2
+  Sparkles, Eye, Undo2, MessageSquare, Search, User
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
-type AdminTab = 'overview' | 'compose' | 'history' | 'templates';
+type AdminTab = 'overview' | 'compose' | 'history' | 'templates' | 'chat';
 
 const AdminDashboard: React.FC = () => {
-  const { messages, users, sendMessage, deleteMessage, templates, addTemplate, deleteTemplate, currentUser } = useData();
-  const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+  const { 
+    messages, users, sendMessage, deleteMessage, templates, addTemplate, deleteTemplate, currentUser,
+    chatSessions, chatMessages, sendChatMessage, markSessionRead 
+  } = useData();
+  const { tab } = useParams<{ tab: string }>();
+  const navigate = useNavigate();
+  const location = useLocation();
+  
+  const activeTab = (tab as AdminTab) || 'overview';
 
   // Compose State
   const [subject, setSubject] = useState('');
@@ -26,8 +34,25 @@ const AdminDashboard: React.FC = () => {
   const [aiPrompt, setAiPrompt] = useState('');
   const [isDrafting, setIsDrafting] = useState(false);
   
+  // Chat State
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [chatInput, setChatInput] = useState('');
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  
   // UI State
   const [notification, setNotification] = useState<{type: 'success' | 'error', msg: string} | null>(null);
+
+  // Check for template data coming from navigation state
+  useEffect(() => {
+    if (location.state && location.state.template) {
+      const tpl = location.state.template as Template;
+      setSubject(tpl.subject);
+      setContent(tpl.content);
+      setPriority(tpl.priority);
+      // Clear state after using
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   // Derived Data
   const totalMessages = messages.length;
@@ -47,6 +72,10 @@ const AdminDashboard: React.FC = () => {
   const showNotification = (type: 'success' | 'error', msg: string) => {
     setNotification({ type, msg });
     setTimeout(() => setNotification(null), 3000);
+  };
+
+  const handleTabChange = (newTab: AdminTab) => {
+    navigate(`/admin/${newTab}`);
   };
 
   const handleSend = (e: React.FormEvent) => {
@@ -88,10 +117,7 @@ const AdminDashboard: React.FC = () => {
   };
 
   const handleUseTemplate = (tpl: Template) => {
-    setSubject(tpl.subject);
-    setContent(tpl.content);
-    setPriority(tpl.priority);
-    setActiveTab('compose');
+    navigate('/admin/compose', { state: { template: tpl } });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -111,34 +137,59 @@ const AdminDashboard: React.FC = () => {
     setContent(result.content);
     setIsDrafting(false);
   };
+  
+  // Chat Logic
+  const handleSessionSelect = (sessionId: string) => {
+    setSelectedSessionId(sessionId);
+    markSessionRead(sessionId);
+    setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+  };
+
+  const handleSendChat = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim() || !selectedSessionId) return;
+    
+    sendChatMessage(selectedSessionId, currentUser.id, chatInput);
+    setChatInput('');
+    setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+  };
+
+  const selectedChatSession = chatSessions.find(s => s.id === selectedSessionId);
+  const currentChatMessages = selectedSessionId 
+    ? chatMessages.filter(m => m.sessionId === selectedSessionId) 
+    : [];
+    
+  const getChatUserName = (userId: string) => users.find(u => u.id === userId)?.name || userId;
+  const getChatUserAvatar = (userId: string) => users.find(u => u.id === userId)?.avatar;
 
   return (
-    <div className="p-8 h-screen overflow-y-auto bg-gray-50 w-full">
-      <div className="max-w-6xl mx-auto pb-12">
+    <div className="p-4 md:p-8 h-screen overflow-y-auto bg-gray-50 w-full">
+      <div className={`max-w-6xl mx-auto pb-12 ${activeTab === 'chat' ? 'h-[calc(100vh-6rem)]' : ''}`}>
         {/* Header */}
-        <header className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <header className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Admin Console</h1>
             <p className="text-gray-500 mt-1">Messaging Center & Analytics</p>
           </div>
-          <div className="flex flex-wrap gap-2 bg-white p-1.5 rounded-xl border border-gray-200 shadow-sm">
+          <div className="flex flex-wrap gap-2 bg-white p-1.5 rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
             {[
               { id: 'overview', label: 'Overview', icon: <BarChart size={16}/> },
               { id: 'compose', label: 'Compose', icon: <Send size={16}/> },
               { id: 'history', label: 'History', icon: <History size={16}/> },
               { id: 'templates', label: 'Templates', icon: <FileText size={16}/> },
-            ].map((tab) => (
+              { id: 'chat', label: 'Support Chat', icon: <MessageSquare size={16}/> },
+            ].map((t) => (
               <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as AdminTab)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  activeTab === tab.id 
+                key={t.id}
+                onClick={() => handleTabChange(t.id as AdminTab)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                  activeTab === t.id 
                   ? 'bg-indigo-600 text-white shadow-md' 
                   : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                 }`}
               >
-                {tab.icon}
-                {tab.label}
+                {t.icon}
+                {t.label}
               </button>
             ))}
           </div>
@@ -455,7 +506,7 @@ const AdminDashboard: React.FC = () => {
            <div className="animate-fade-in">
               <div className="flex justify-between items-center mb-6">
                  <h2 className="text-xl font-bold text-gray-800">Saved Templates</h2>
-                 <button onClick={() => setActiveTab('compose')} className="text-sm text-indigo-600 font-medium hover:underline">+ Create New via Compose</button>
+                 <button onClick={() => handleTabChange('compose')} className="text-sm text-indigo-600 font-medium hover:underline">+ Create New via Compose</button>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                  {templates.map(tpl => (
@@ -487,7 +538,7 @@ const AdminDashboard: React.FC = () => {
                  
                  {/* Empty State Card */}
                  <div 
-                    onClick={() => setActiveTab('compose')}
+                    onClick={() => handleTabChange('compose')}
                     className="border-2 border-dashed border-gray-200 rounded-xl p-6 flex flex-col items-center justify-center text-gray-400 cursor-pointer hover:border-indigo-300 hover:text-indigo-500 transition-all min-h-[250px]"
                  >
                     <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mb-3">
@@ -499,6 +550,134 @@ const AdminDashboard: React.FC = () => {
               </div>
            </div>
         )}
+
+        {/* CHAT TAB (New) */}
+        {activeTab === 'chat' && (
+          <div className="flex h-full bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden animate-fade-in">
+            {/* Session List (Left) */}
+            <div className="w-1/3 border-r border-gray-200 bg-gray-50 flex flex-col">
+              <div className="p-4 border-b border-gray-200">
+                <div className="relative">
+                  <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
+                  <input 
+                    type="text" 
+                    placeholder="Search chats..."
+                    className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                {chatSessions.length === 0 ? (
+                  <div className="p-6 text-center text-gray-400 text-sm">No active chats</div>
+                ) : (
+                  chatSessions.map(session => {
+                    const sessionUser = users.find(u => u.id === session.userId);
+                    const isActive = selectedSessionId === session.id;
+                    return (
+                      <div 
+                        key={session.id}
+                        onClick={() => handleSessionSelect(session.id)}
+                        className={`p-4 cursor-pointer border-b border-gray-100 hover:bg-gray-100 transition-colors ${isActive ? 'bg-white border-l-4 border-l-indigo-600 shadow-sm' : 'border-l-4 border-l-transparent'}`}
+                      >
+                        <div className="flex justify-between items-start mb-1">
+                          <div className="flex items-center gap-2">
+                            {/* Avatar */}
+                            <div className="relative">
+                                <img src={sessionUser?.avatar} alt="" className="w-8 h-8 rounded-full object-cover" />
+                                <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-400 border-2 border-white rounded-full"></span>
+                            </div>
+                            <span className={`text-sm ${session.unreadCount > 0 ? 'font-bold text-gray-900' : 'font-medium text-gray-700'}`}>
+                              {sessionUser?.name || 'Unknown User'}
+                            </span>
+                          </div>
+                          {session.unreadCount > 0 && (
+                            <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{session.unreadCount}</span>
+                          )}
+                        </div>
+                        <p className={`text-xs truncate mt-1 ${session.unreadCount > 0 ? 'text-gray-800 font-medium' : 'text-gray-500'}`}>
+                          {session.lastMessage}
+                        </p>
+                        <p className="text-[10px] text-gray-400 mt-1 text-right">
+                          {new Date(session.lastMessageTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        </p>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* Conversation View (Right) */}
+            <div className="flex-1 flex flex-col h-full">
+              {selectedSessionId ? (
+                <>
+                  {/* Chat Header */}
+                  <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-white">
+                    <div className="flex items-center gap-3">
+                      <img src={getChatUserAvatar(selectedChatSession?.userId || '')} className="w-10 h-10 rounded-full" alt="User" />
+                      <div>
+                        <h3 className="font-bold text-gray-800">{getChatUserName(selectedChatSession?.userId || '')}</h3>
+                        <p className="text-xs text-green-600 font-medium">Active Now</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Messages */}
+                  <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50">
+                    {currentChatMessages.map(msg => {
+                      const isAdmin = msg.senderId === currentUser.id;
+                      return (
+                        <div key={msg.id} className={`flex ${isAdmin ? 'justify-end' : 'justify-start'}`}>
+                          <div className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'} max-w-[70%]`}>
+                            <div className={`px-4 py-2.5 rounded-2xl text-sm shadow-sm ${
+                              isAdmin 
+                              ? 'bg-indigo-600 text-white rounded-br-none' 
+                              : 'bg-white text-gray-800 border border-gray-200 rounded-bl-none'
+                            }`}>
+                              {msg.content}
+                            </div>
+                            <span className="text-[10px] text-gray-400 mt-1 px-1">
+                              {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div ref={chatEndRef} />
+                  </div>
+
+                  {/* Input */}
+                  <form onSubmit={handleSendChat} className="p-4 bg-white border-t border-gray-200">
+                    <div className="flex gap-3">
+                      <input 
+                        type="text" 
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        placeholder="Type your reply..."
+                        className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <button 
+                        type="submit"
+                        disabled={!chatInput.trim()}
+                        className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                      >
+                        <Send size={20} />
+                      </button>
+                    </div>
+                  </form>
+                </>
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center text-gray-400 bg-gray-50">
+                  <div className="w-16 h-16 bg-white rounded-full shadow-sm flex items-center justify-center mb-4">
+                    <MessageSquare size={32} className="text-indigo-200" />
+                  </div>
+                  <p className="font-medium">Select a conversation to start chatting</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );

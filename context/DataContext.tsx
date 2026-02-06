@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Message, User, MessageType, Priority, Template } from '../types';
+import { Message, User, MessageType, Priority, Template, ChatSession, ChatMessage } from '../types';
 
 // Mock Data
 const MOCK_USERS: User[] = [
@@ -68,11 +68,36 @@ const INITIAL_TEMPLATES: Template[] = [
   }
 ];
 
+// Mock Chat Data
+const INITIAL_SESSIONS: ChatSession[] = [
+  {
+    id: 'session-1',
+    userId: 'user-1',
+    lastMessage: 'I have a question about the VPN.',
+    lastMessageTime: new Date(Date.now() - 3600000).toISOString(),
+    unreadCount: 1,
+    status: 'active'
+  }
+];
+
+const INITIAL_CHAT_MESSAGES: ChatMessage[] = [
+  {
+    id: 'cm-1',
+    sessionId: 'session-1',
+    senderId: 'user-1',
+    content: 'Hi, I have a question about the VPN.',
+    timestamp: new Date(Date.now() - 3600000).toISOString(),
+    isRead: false
+  }
+];
+
 interface DataContextType {
   currentUser: User;
   users: User[];
   messages: Message[];
   templates: Template[];
+  chatSessions: ChatSession[];
+  chatMessages: ChatMessage[];
   switchUser: (role: 'admin' | 'user') => void;
   sendMessage: (msg: Omit<Message, 'id' | 'createdAt' | 'isRead'>) => void;
   markAsRead: (id: string) => void;
@@ -83,6 +108,10 @@ interface DataContextType {
   getUnreadCount: () => number;
   addTemplate: (tpl: Omit<Template, 'id'>) => void;
   deleteTemplate: (id: string) => void;
+  // Chat Methods
+  sendChatMessage: (sessionId: string, senderId: string, content: string) => void;
+  createChatSession: (userId: string) => string; // returns sessionId
+  markSessionRead: (sessionId: string) => void;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -92,6 +121,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [currentUser, setCurrentUser] = useState<User>(MOCK_USERS[1]); // Default to Alice (User)
   const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES);
   const [templates, setTemplates] = useState<Template[]>(INITIAL_TEMPLATES);
+  
+  // Chat State
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>(INITIAL_SESSIONS);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(INITIAL_CHAT_MESSAGES);
 
   const switchUser = (role: 'admin' | 'user') => {
     const user = users.find(u => u.role === role);
@@ -146,12 +179,69 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     ).length;
   };
 
+  // --- Chat Implementation ---
+
+  const createChatSession = (userId: string): string => {
+    const existing = chatSessions.find(s => s.userId === userId);
+    if (existing) return existing.id;
+
+    const newSession: ChatSession = {
+      id: `session-${Date.now()}`,
+      userId,
+      lastMessage: 'Chat started',
+      lastMessageTime: new Date().toISOString(),
+      unreadCount: 0,
+      status: 'active'
+    };
+    setChatSessions(prev => [newSession, ...prev]);
+    return newSession.id;
+  };
+
+  const sendChatMessage = (sessionId: string, senderId: string, content: string) => {
+    const newMsg: ChatMessage = {
+      id: `cm-${Date.now()}`,
+      sessionId,
+      senderId,
+      content,
+      timestamp: new Date().toISOString(),
+      isRead: false
+    };
+
+    setChatMessages(prev => [...prev, newMsg]);
+
+    setChatSessions(prev => prev.map(s => {
+      if (s.id === sessionId) {
+        // If sender is NOT admin, increment unread count for admin
+        // If sender IS admin, unread count is irrelevant here (or 0)
+        const isUserSender = users.find(u => u.id === senderId)?.role === 'user';
+        return {
+          ...s,
+          lastMessage: content,
+          lastMessageTime: new Date().toISOString(),
+          unreadCount: isUserSender ? s.unreadCount + 1 : s.unreadCount
+        };
+      }
+      return s;
+    }));
+  };
+
+  const markSessionRead = (sessionId: string) => {
+    setChatSessions(prev => prev.map(s => 
+      s.id === sessionId ? { ...s, unreadCount: 0 } : s
+    ));
+    setChatMessages(prev => prev.map(m => 
+      m.sessionId === sessionId ? { ...m, isRead: true } : m
+    ));
+  };
+
   return (
     <DataContext.Provider value={{
       currentUser,
       users,
       messages,
       templates,
+      chatSessions,
+      chatMessages,
       switchUser,
       sendMessage,
       markAsRead,
@@ -161,7 +251,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       deleteMessage,
       getUnreadCount,
       addTemplate,
-      deleteTemplate
+      deleteTemplate,
+      sendChatMessage,
+      createChatSession,
+      markSessionRead
     }}>
       {children}
     </DataContext.Provider>
