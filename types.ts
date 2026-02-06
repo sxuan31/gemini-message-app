@@ -58,6 +58,8 @@ export interface ChatMessage {
   content: string;
   timestamp: string;
   isRead: boolean;
+  type?: 'text' | 'image' | 'system'; // Support different message types
+  attachmentUrl?: string;
 }
 
 export interface ChatSession {

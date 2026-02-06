@@ -6,16 +6,24 @@ import { draftAnnouncement } from '../services/geminiService';
 import { 
   Users, Send, Bell, CheckCircle2, AlertCircle, 
   History, FileText, Trash2, Copy, Clock, CalendarDays,
-  Sparkles, Eye, Undo2, MessageSquare, Search, User
+  Sparkles, Eye, Undo2, MessageSquare, Search, User, MoreVertical, CheckSquare, XCircle, Zap
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 type AdminTab = 'overview' | 'compose' | 'history' | 'templates' | 'chat';
 
+const CANNED_RESPONSES = [
+    "Hello! How can I help you today?",
+    "Could you please provide more details?",
+    "I am looking into this for you, please hold on.",
+    "Is there anything else I can help you with?",
+    "Thank you for contacting support. Have a great day!"
+];
+
 const AdminDashboard: React.FC = () => {
   const { 
     messages, users, sendMessage, deleteMessage, templates, addTemplate, deleteTemplate, currentUser,
-    chatSessions, chatMessages, sendChatMessage, markSessionRead 
+    chatSessions, chatMessages, sendChatMessage, markSessionRead, closeChatSession 
   } = useData();
   const { tab } = useParams<{ tab: string }>();
   const navigate = useNavigate();
@@ -37,6 +45,8 @@ const AdminDashboard: React.FC = () => {
   // Chat State
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [chatInput, setChatInput] = useState('');
+  const [chatFilter, setChatFilter] = useState<'active' | 'closed'>('active');
+  const [showCanned, setShowCanned] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   
   // UI State
@@ -151,16 +161,33 @@ const AdminDashboard: React.FC = () => {
     
     sendChatMessage(selectedSessionId, currentUser.id, chatInput);
     setChatInput('');
+    setShowCanned(false);
     setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
   };
+
+  const insertCanned = (text: string) => {
+      setChatInput(text);
+      setShowCanned(false);
+  };
+
+  const handleCloseSession = () => {
+      if (selectedSessionId && confirm('Mark this conversation as resolved and close it?')) {
+          closeChatSession(selectedSessionId);
+          showNotification('success', 'Conversation closed.');
+      }
+  };
+
+  // Chat Data filtering
+  const filteredSessions = chatSessions
+    .filter(s => s.status === chatFilter)
+    .sort((a,b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime());
 
   const selectedChatSession = chatSessions.find(s => s.id === selectedSessionId);
   const currentChatMessages = selectedSessionId 
     ? chatMessages.filter(m => m.sessionId === selectedSessionId) 
     : [];
     
-  const getChatUserName = (userId: string) => users.find(u => u.id === userId)?.name || userId;
-  const getChatUserAvatar = (userId: string) => users.find(u => u.id === userId)?.avatar;
+  const chatUser = users.find(u => u.id === selectedChatSession?.userId);
 
   return (
     <div className="p-4 md:p-8 h-screen overflow-y-auto bg-gray-50 w-full">
@@ -551,12 +578,12 @@ const AdminDashboard: React.FC = () => {
            </div>
         )}
 
-        {/* CHAT TAB (New) */}
+        {/* CHAT TAB (Enhanced) */}
         {activeTab === 'chat' && (
           <div className="flex h-full bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden animate-fade-in">
             {/* Session List (Left) */}
-            <div className="w-1/3 border-r border-gray-200 bg-gray-50 flex flex-col">
-              <div className="p-4 border-b border-gray-200">
+            <div className="w-1/3 min-w-[250px] border-r border-gray-200 bg-gray-50 flex flex-col">
+              <div className="p-4 border-b border-gray-200 space-y-3">
                 <div className="relative">
                   <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
                   <input 
@@ -565,12 +592,29 @@ const AdminDashboard: React.FC = () => {
                     className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
+                <div className="flex gap-1 p-1 bg-gray-200 rounded-lg">
+                    <button 
+                        onClick={() => setChatFilter('active')} 
+                        className={`flex-1 text-xs font-semibold py-1.5 rounded-md transition-colors ${chatFilter === 'active' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                        Active
+                    </button>
+                    <button 
+                        onClick={() => setChatFilter('closed')}
+                        className={`flex-1 text-xs font-semibold py-1.5 rounded-md transition-colors ${chatFilter === 'closed' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                        Closed
+                    </button>
+                </div>
               </div>
               <div className="flex-1 overflow-y-auto">
-                {chatSessions.length === 0 ? (
-                  <div className="p-6 text-center text-gray-400 text-sm">No active chats</div>
+                {filteredSessions.length === 0 ? (
+                  <div className="p-6 text-center text-gray-400 text-sm flex flex-col items-center">
+                      <MessageSquare className="opacity-20 mb-2" size={40}/>
+                      No {chatFilter} chats found
+                  </div>
                 ) : (
-                  chatSessions.map(session => {
+                  filteredSessions.map(session => {
                     const sessionUser = users.find(u => u.id === session.userId);
                     const isActive = selectedSessionId === session.id;
                     return (
@@ -584,7 +628,7 @@ const AdminDashboard: React.FC = () => {
                             {/* Avatar */}
                             <div className="relative">
                                 <img src={sessionUser?.avatar} alt="" className="w-8 h-8 rounded-full object-cover" />
-                                <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-400 border-2 border-white rounded-full"></span>
+                                {session.status === 'active' && <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-400 border-2 border-white rounded-full"></span>}
                             </div>
                             <span className={`text-sm ${session.unreadCount > 0 ? 'font-bold text-gray-900' : 'font-medium text-gray-700'}`}>
                               {sessionUser?.name || 'Unknown User'}
@@ -607,18 +651,31 @@ const AdminDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* Conversation View (Right) */}
-            <div className="flex-1 flex flex-col h-full">
+            {/* Conversation View (Middle) */}
+            <div className={`flex-1 flex flex-col h-full ${selectedSessionId ? 'border-r border-gray-200' : ''}`}>
               {selectedSessionId ? (
                 <>
                   {/* Chat Header */}
-                  <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-white">
+                  <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-white shadow-sm z-10">
                     <div className="flex items-center gap-3">
-                      <img src={getChatUserAvatar(selectedChatSession?.userId || '')} className="w-10 h-10 rounded-full" alt="User" />
+                      <img src={chatUser?.avatar} className="w-10 h-10 rounded-full" alt="User" />
                       <div>
-                        <h3 className="font-bold text-gray-800">{getChatUserName(selectedChatSession?.userId || '')}</h3>
-                        <p className="text-xs text-green-600 font-medium">Active Now</p>
+                        <h3 className="font-bold text-gray-800">{chatUser?.name || 'Unknown'}</h3>
+                        <p className={`text-xs font-medium flex items-center gap-1 ${selectedChatSession?.status === 'active' ? 'text-green-600' : 'text-gray-500'}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${selectedChatSession?.status === 'active' ? 'bg-green-500' : 'bg-gray-400'}`}></span>
+                            {selectedChatSession?.status === 'active' ? 'Active Session' : 'Closed Session'}
+                        </p>
                       </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        {selectedChatSession?.status === 'active' && (
+                            <button 
+                                onClick={handleCloseSession}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors border border-red-100"
+                            >
+                                <XCircle size={14} /> Close Ticket
+                            </button>
+                        )}
                     </div>
                   </div>
 
@@ -626,18 +683,35 @@ const AdminDashboard: React.FC = () => {
                   <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50">
                     {currentChatMessages.map(msg => {
                       const isAdmin = msg.senderId === currentUser.id;
+                      const isSystem = msg.type === 'system';
+                      
+                      if (isSystem) {
+                          return (
+                              <div key={msg.id} className="flex justify-center my-4">
+                                  <span className="text-xs text-gray-500 bg-gray-200 px-3 py-1 rounded-full">{msg.content}</span>
+                              </div>
+                          )
+                      }
+                      
                       return (
                         <div key={msg.id} className={`flex ${isAdmin ? 'justify-end' : 'justify-start'}`}>
                           <div className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'} max-w-[70%]`}>
-                            <div className={`px-4 py-2.5 rounded-2xl text-sm shadow-sm ${
-                              isAdmin 
-                              ? 'bg-indigo-600 text-white rounded-br-none' 
-                              : 'bg-white text-gray-800 border border-gray-200 rounded-bl-none'
-                            }`}>
-                              {msg.content}
-                            </div>
+                            {msg.type === 'image' ? (
+                                <div className={`p-2 rounded-xl border ${isAdmin ? 'bg-indigo-100 border-indigo-200' : 'bg-white border-gray-200'}`}>
+                                    <img src={msg.attachmentUrl} alt="Attachment" className="rounded-lg max-w-full h-auto" />
+                                </div>
+                            ) : (
+                                <div className={`px-4 py-2.5 rounded-2xl text-sm shadow-sm ${
+                                isAdmin 
+                                ? 'bg-indigo-600 text-white rounded-br-none' 
+                                : 'bg-white text-gray-800 border border-gray-200 rounded-bl-none'
+                                }`}>
+                                {msg.content}
+                                </div>
+                            )}
                             <span className="text-[10px] text-gray-400 mt-1 px-1">
                               {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                              {isAdmin && msg.isRead && <span className="ml-1 text-indigo-400">Read</span>}
                             </span>
                           </div>
                         </div>
@@ -647,24 +721,54 @@ const AdminDashboard: React.FC = () => {
                   </div>
 
                   {/* Input */}
-                  <form onSubmit={handleSendChat} className="p-4 bg-white border-t border-gray-200">
-                    <div className="flex gap-3">
-                      <input 
-                        type="text" 
-                        value={chatInput}
-                        onChange={(e) => setChatInput(e.target.value)}
-                        placeholder="Type your reply..."
-                        className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
-                      <button 
-                        type="submit"
-                        disabled={!chatInput.trim()}
-                        className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-                      >
-                        <Send size={20} />
-                      </button>
+                  {selectedChatSession?.status === 'active' ? (
+                    <div className="bg-white border-t border-gray-200">
+                        {/* Canned Responses */}
+                        {showCanned && (
+                            <div className="border-b border-gray-100 p-2 bg-gray-50 flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                                {CANNED_RESPONSES.map((resp, idx) => (
+                                    <button 
+                                        key={idx}
+                                        onClick={() => insertCanned(resp)}
+                                        className="text-xs bg-white border border-gray-200 px-3 py-1.5 rounded-full hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-700 transition-all text-left truncate max-w-[200px]"
+                                    >
+                                        {resp}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                        <form onSubmit={handleSendChat} className="p-4">
+                            <div className="flex gap-3">
+                                <button 
+                                    type="button"
+                                    onClick={() => setShowCanned(!showCanned)}
+                                    className={`p-2 rounded-lg transition-colors ${showCanned ? 'bg-indigo-100 text-indigo-600' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+                                    title="Quick Replies"
+                                >
+                                    <Zap size={20} />
+                                </button>
+                                <input 
+                                    type="text" 
+                                    value={chatInput}
+                                    onChange={(e) => setChatInput(e.target.value)}
+                                    placeholder="Type your reply..."
+                                    className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                />
+                                <button 
+                                    type="submit"
+                                    disabled={!chatInput.trim()}
+                                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                                >
+                                    <Send size={20} />
+                                </button>
+                            </div>
+                        </form>
                     </div>
-                  </form>
+                  ) : (
+                    <div className="p-4 bg-gray-50 border-t border-gray-200 text-center">
+                        <p className="text-gray-500 text-sm">This conversation is closed.</p>
+                    </div>
+                  )}
                 </>
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center text-gray-400 bg-gray-50">
@@ -675,6 +779,52 @@ const AdminDashboard: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {/* Customer Details Sidebar (Right) */}
+            {selectedSessionId && (
+                <div className="w-1/4 min-w-[220px] bg-white hidden xl:block overflow-y-auto">
+                    <div className="p-6 flex flex-col items-center border-b border-gray-100">
+                        <img src={chatUser?.avatar} className="w-20 h-20 rounded-full mb-4 border-4 border-gray-50" alt="User" />
+                        <h3 className="font-bold text-gray-900 text-lg text-center">{chatUser?.name}</h3>
+                        <p className="text-sm text-gray-500">{chatUser?.role}</p>
+                    </div>
+                    <div className="p-6 space-y-6">
+                        <div>
+                            <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Contact Info</h4>
+                            <div className="space-y-3">
+                                <div className="flex items-start gap-3">
+                                    <div className="mt-0.5 text-gray-400"><Send size={14}/></div>
+                                    <p className="text-sm text-gray-600 break-all">{chatUser?.email}</p>
+                                </div>
+                                <div className="flex items-start gap-3">
+                                    <div className="mt-0.5 text-gray-400"><Users size={14}/></div>
+                                    <p className="text-sm text-gray-600">{chatUser?.department || 'General'}</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Previous Tickets</h4>
+                            <div className="space-y-2">
+                                <div className="p-3 bg-gray-50 rounded-lg border border-gray-100 text-xs">
+                                    <div className="font-medium text-gray-700 mb-1">VPN Connection Issue</div>
+                                    <div className="flex justify-between text-gray-400">
+                                        <span>#1024</span>
+                                        <span>Resolved</span>
+                                    </div>
+                                </div>
+                                <div className="p-3 bg-gray-50 rounded-lg border border-gray-100 text-xs">
+                                    <div className="font-medium text-gray-700 mb-1">Password Reset</div>
+                                    <div className="flex justify-between text-gray-400">
+                                        <span>#992</span>
+                                        <span>Resolved</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
           </div>
         )}
 

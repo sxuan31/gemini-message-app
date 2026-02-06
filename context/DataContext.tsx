@@ -87,7 +87,8 @@ const INITIAL_CHAT_MESSAGES: ChatMessage[] = [
     senderId: 'user-1',
     content: 'Hi, I have a question about the VPN.',
     timestamp: new Date(Date.now() - 3600000).toISOString(),
-    isRead: false
+    isRead: false,
+    type: 'text'
   }
 ];
 
@@ -109,9 +110,11 @@ interface DataContextType {
   addTemplate: (tpl: Omit<Template, 'id'>) => void;
   deleteTemplate: (id: string) => void;
   // Chat Methods
-  sendChatMessage: (sessionId: string, senderId: string, content: string) => void;
+  sendChatMessage: (sessionId: string, senderId: string, content: string, type?: 'text'|'image', attachmentUrl?: string) => void;
   createChatSession: (userId: string) => string; // returns sessionId
   markSessionRead: (sessionId: string) => void;
+  closeChatSession: (sessionId: string) => void;
+  getUserUnreadChatCount: (userId: string) => number;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -183,7 +186,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const createChatSession = (userId: string): string => {
     const existing = chatSessions.find(s => s.userId === userId);
-    if (existing) return existing.id;
+    if (existing) {
+        // Re-open if closed
+        if (existing.status === 'closed') {
+             setChatSessions(prev => prev.map(s => s.id === existing.id ? { ...s, status: 'active' } : s));
+        }
+        return existing.id;
+    }
 
     const newSession: ChatSession = {
       id: `session-${Date.now()}`,
@@ -197,28 +206,29 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return newSession.id;
   };
 
-  const sendChatMessage = (sessionId: string, senderId: string, content: string) => {
+  const sendChatMessage = (sessionId: string, senderId: string, content: string, type: 'text'|'image' = 'text', attachmentUrl?: string) => {
     const newMsg: ChatMessage = {
       id: `cm-${Date.now()}`,
       sessionId,
       senderId,
       content,
       timestamp: new Date().toISOString(),
-      isRead: false
+      isRead: false,
+      type,
+      attachmentUrl
     };
 
     setChatMessages(prev => [...prev, newMsg]);
 
     setChatSessions(prev => prev.map(s => {
       if (s.id === sessionId) {
-        // If sender is NOT admin, increment unread count for admin
-        // If sender IS admin, unread count is irrelevant here (or 0)
         const isUserSender = users.find(u => u.id === senderId)?.role === 'user';
         return {
           ...s,
-          lastMessage: content,
+          lastMessage: type === 'image' ? '[Image]' : content,
           lastMessageTime: new Date().toISOString(),
-          unreadCount: isUserSender ? s.unreadCount + 1 : s.unreadCount
+          unreadCount: isUserSender ? s.unreadCount + 1 : s.unreadCount,
+          status: 'active' // Auto re-open if chatting
         };
       }
       return s;
@@ -229,9 +239,39 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setChatSessions(prev => prev.map(s => 
       s.id === sessionId ? { ...s, unreadCount: 0 } : s
     ));
+    // Also mark messages as read for admin view
     setChatMessages(prev => prev.map(m => 
-      m.sessionId === sessionId ? { ...m, isRead: true } : m
+      m.sessionId === sessionId && !m.isRead ? { ...m, isRead: true } : m
     ));
+  };
+
+  const closeChatSession = (sessionId: string) => {
+     setChatSessions(prev => prev.map(s => 
+        s.id === sessionId ? { ...s, status: 'closed' } : s
+     ));
+     
+     // Add a system message
+     const sysMsg: ChatMessage = {
+        id: `sys-${Date.now()}`,
+        sessionId,
+        senderId: 'system',
+        content: 'This conversation has been closed by support.',
+        timestamp: new Date().toISOString(),
+        isRead: true,
+        type: 'system'
+     };
+     setChatMessages(prev => [...prev, sysMsg]);
+  };
+
+  const getUserUnreadChatCount = (userId: string) => {
+      // Find session for user
+      const session = chatSessions.find(s => s.userId === userId);
+      if (!session) return 0;
+      // Count messages not from user and not read (simplified for demo, usually we track last read ID)
+      // For this demo, we'll just check if the last message was from admin and we haven't opened chat
+      // A robust system would need `lastReadMessageId` per participant. 
+      // We will infer unread based on message read status where sender != user
+      return chatMessages.filter(m => m.sessionId === session.id && m.senderId !== userId && !m.isRead).length;
   };
 
   return (
@@ -254,7 +294,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       deleteTemplate,
       sendChatMessage,
       createChatSession,
-      markSessionRead
+      markSessionRead,
+      closeChatSession,
+      getUserUnreadChatCount
     }}>
       {children}
     </DataContext.Provider>
