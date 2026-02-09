@@ -6,9 +6,11 @@ import { draftAnnouncement } from '../services/geminiService';
 import { 
   Users, Send, Bell, CheckCircle2, AlertCircle, 
   History, FileText, Trash2, Copy, Clock, CalendarDays,
-  Sparkles, Eye, Undo2, MessageSquare, Search, User, MoreVertical, CheckSquare, XCircle, Zap
+  Sparkles, Eye, Undo2, MessageSquare, Search, User, MoreVertical, CheckSquare, XCircle, Zap, Smile,
+  BarChart2
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import EmojiPicker from 'emoji-picker-react';
 
 type AdminTab = 'overview' | 'compose' | 'history' | 'templates' | 'chat';
 
@@ -47,6 +49,7 @@ const AdminDashboard: React.FC = () => {
   const [chatInput, setChatInput] = useState('');
   const [chatFilter, setChatFilter] = useState<'active' | 'closed'>('active');
   const [showCanned, setShowCanned] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   
   // UI State
@@ -162,12 +165,17 @@ const AdminDashboard: React.FC = () => {
     sendChatMessage(selectedSessionId, currentUser.id, chatInput);
     setChatInput('');
     setShowCanned(false);
+    setShowEmojiPicker(false);
     setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
   };
 
   const insertCanned = (text: string) => {
       setChatInput(text);
       setShowCanned(false);
+  };
+
+  const onEmojiClick = (emojiData: any) => {
+    setChatInput(prev => prev + emojiData.emoji);
   };
 
   const handleCloseSession = () => {
@@ -200,7 +208,7 @@ const AdminDashboard: React.FC = () => {
           </div>
           <div className="flex flex-wrap gap-2 bg-white p-1.5 rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
             {[
-              { id: 'overview', label: 'Overview', icon: <BarChart size={16}/> },
+              { id: 'overview', label: 'Overview', icon: <BarChart2 size={16}/> },
               { id: 'compose', label: 'Compose', icon: <Send size={16}/> },
               { id: 'history', label: 'History', icon: <History size={16}/> },
               { id: 'templates', label: 'Templates', icon: <FileText size={16}/> },
@@ -528,56 +536,6 @@ const AdminDashboard: React.FC = () => {
            </div>
         )}
 
-        {/* TEMPLATES TAB */}
-        {activeTab === 'templates' && (
-           <div className="animate-fade-in">
-              <div className="flex justify-between items-center mb-6">
-                 <h2 className="text-xl font-bold text-gray-800">Saved Templates</h2>
-                 <button onClick={() => handleTabChange('compose')} className="text-sm text-indigo-600 font-medium hover:underline">+ Create New via Compose</button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                 {templates.map(tpl => (
-                    <div key={tpl.id} className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col">
-                       <div className="flex justify-between items-start mb-4">
-                          <h3 className="font-bold text-gray-900">{tpl.name}</h3>
-                          {tpl.priority === Priority.HIGH && <span className="bg-red-50 text-red-600 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">High Priority</span>}
-                       </div>
-                       <p className="text-sm text-gray-500 font-medium mb-1">Subject: {tpl.subject}</p>
-                       <p className="text-sm text-gray-400 line-clamp-3 mb-6 bg-gray-50 p-3 rounded-lg flex-1 italic border border-gray-100">
-                          "{tpl.content}"
-                       </p>
-                       <div className="flex items-center gap-3 pt-4 border-t border-gray-100 mt-auto">
-                          <button 
-                             onClick={() => handleUseTemplate(tpl)}
-                             className="flex-1 bg-indigo-50 text-indigo-700 py-2 rounded-lg text-sm font-medium hover:bg-indigo-100 transition-colors"
-                          >
-                             Use Template
-                          </button>
-                          <button 
-                             onClick={() => deleteTemplate(tpl.id)}
-                             className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          >
-                             <Trash2 size={18} />
-                          </button>
-                       </div>
-                    </div>
-                 ))}
-                 
-                 {/* Empty State Card */}
-                 <div 
-                    onClick={() => handleTabChange('compose')}
-                    className="border-2 border-dashed border-gray-200 rounded-xl p-6 flex flex-col items-center justify-center text-gray-400 cursor-pointer hover:border-indigo-300 hover:text-indigo-500 transition-all min-h-[250px]"
-                 >
-                    <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mb-3">
-                       <FileText size={24} />
-                    </div>
-                    <p className="font-medium">Create New Template</p>
-                    <p className="text-xs mt-1 opacity-70">Go to Compose &gt; Save as Template</p>
-                 </div>
-              </div>
-           </div>
-        )}
-
         {/* CHAT TAB (Enhanced) */}
         {activeTab === 'chat' && (
           <div className="flex h-full bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden animate-fade-in">
@@ -701,7 +659,7 @@ const AdminDashboard: React.FC = () => {
                                     <img src={msg.attachmentUrl} alt="Attachment" className="rounded-lg max-w-full h-auto" />
                                 </div>
                             ) : (
-                                <div className={`px-4 py-2.5 rounded-2xl text-sm shadow-sm ${
+                                <div className={`px-4 py-2.5 rounded-2xl text-sm shadow-sm whitespace-pre-wrap ${
                                 isAdmin 
                                 ? 'bg-indigo-600 text-white rounded-br-none' 
                                 : 'bg-white text-gray-800 border border-gray-200 rounded-bl-none'
@@ -722,7 +680,20 @@ const AdminDashboard: React.FC = () => {
 
                   {/* Input */}
                   {selectedChatSession?.status === 'active' ? (
-                    <div className="bg-white border-t border-gray-200">
+                    <div className="bg-white border-t border-gray-200 relative">
+                        {/* Emoji Picker */}
+                        {showEmojiPicker && (
+                            <div className="absolute bottom-full left-4 mb-2 z-20 shadow-xl rounded-xl">
+                                <EmojiPicker 
+                                    onEmojiClick={onEmojiClick} 
+                                    width={300} 
+                                    height={350} 
+                                    searchDisabled 
+                                    previewConfig={{showPreview: false}}
+                                />
+                            </div>
+                        )}
+
                         {/* Canned Responses */}
                         {showCanned && (
                             <div className="border-b border-gray-100 p-2 bg-gray-50 flex flex-wrap gap-2 max-h-32 overflow-y-auto">
@@ -747,10 +718,19 @@ const AdminDashboard: React.FC = () => {
                                 >
                                     <Zap size={20} />
                                 </button>
+                                <button 
+                                    type="button" 
+                                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                                    className={`p-2 transition-colors rounded-lg hover:bg-gray-100 ${showEmojiPicker ? 'text-yellow-500' : 'text-gray-400 hover:text-yellow-500'}`}
+                                    title="Emoji"
+                                >
+                                    <Smile size={20} />
+                                </button>
                                 <input 
                                     type="text" 
                                     value={chatInput}
                                     onChange={(e) => setChatInput(e.target.value)}
+                                    onFocus={() => setShowEmojiPicker(false)}
                                     placeholder="Type your reply..."
                                     className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                                 />
